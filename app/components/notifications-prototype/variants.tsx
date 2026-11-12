@@ -372,7 +372,7 @@ export function VariantDBell({ items: initial }: { items: PrototypeNotification[
       >
         <Bell className="size-4" />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+          <span className="absolute right-0 top-0 flex h-3 min-w-3 items-center justify-center rounded-full bg-red-600 px-[3px] text-[8px] font-semibold leading-none text-white ring-2 ring-sidebar">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
