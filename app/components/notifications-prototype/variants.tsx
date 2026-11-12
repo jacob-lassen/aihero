@@ -160,7 +160,7 @@ export function VariantABell({ items }: { items: PrototypeNotification[] }) {
             <div className="text-sm font-semibold">Notifications</div>
             <span className="text-xs text-muted-foreground">Latest {Math.min(8, items.length)}</span>
           </div>
-          <div className="max-h-[28rem] overflow-y-auto p-1">
+          <div className="max-h-[28rem] space-y-1.5 overflow-y-auto p-2">
             {items.length === 0 ? <Empty small /> : items.slice(0, 8).map((n) => <Row key={n.id} n={n} compact onOpen={() => setOpen(false)} />)}
           </div>
           {items.length > 0 && (
@@ -389,7 +389,7 @@ export function VariantDBell({ items: initial }: { items: PrototypeNotification[
               <CheckCheck className="size-3.5" /> Mark all read
             </button>
           </div>
-          <div className="max-h-[28rem] overflow-y-auto p-1">
+          <div className="max-h-[28rem] space-y-1.5 overflow-y-auto p-2">
             {items.length === 0 ? (
               <Empty small />
             ) : (
