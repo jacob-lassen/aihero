@@ -38,7 +38,7 @@ export function LessonNote({ note }: { note: LessonNoteData }) {
             <Button type="submit" size="sm" disabled={isSaving}>
               {isSaving ? "Saving..." : "Save"}
             </Button>
-            {error && <span className="text-sm text-red-600">{error}</span>}
+            {error && <span className="text-sm text-destructive">{error}</span>}
             {!error && note && (
               <span
                 suppressHydrationWarning

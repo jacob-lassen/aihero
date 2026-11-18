@@ -34,7 +34,7 @@ describe("LessonNote", () => {
   it("shows the saved note and when it was last edited", () => {
     const html = render({
       body: "Result keeps the error in the type",
-      updatedAt: new Date().toISOString(),
+      updatedAt: "2026-01-01T00:00:00.000Z",
     });
 
     expect(html).toContain("Result keeps the error in the type");
