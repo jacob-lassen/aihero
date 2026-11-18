@@ -1,0 +1,546 @@
+import { renderComment } from "~/lib/comment-markdown.server";
+import { markdown, type Markdown } from "~/lib/text";
+import type { RenderedComment } from "~/components/comment-thread";
+import { db } from "~/db";
+import {
+  categories,
+  comments,
+  courses,
+  lessonProgress,
+  lessons,
+  modules,
+  quizzes,
+  quizQuestions,
+  quizOptions,
+  quizAttempts,
+  quizAnswers,
+  users,
+  videoWatchEvents,
+  LessonProgressStatus,
+  UserRole,
+} from "~/db/schema";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+
+export type CommentAuthor = {
+  id: number;
+  name: string;
+  avatarUrl: string | null;
+  isInstructor: boolean;
+  isPlatformAdmin: boolean;
+};
+
+export type ThreadComment = {
+  id: number;
+  body: Markdown;
+  createdAt: string;
+  editedAt: string | null;
+  deleted: boolean;
+  author: CommentAuthor;
+  replies: ThreadComment[];
+};
+
+function getCourseRow(id: number) {
+  return db
+    .select({
+      id: courses.id,
+      title: courses.title,
+      slug: courses.slug,
+      description: courses.description,
+      salesCopy: courses.salesCopy,
+      instructorId: courses.instructorId,
+      categoryId: courses.categoryId,
+      status: courses.status,
+      coverImageUrl: courses.coverImageUrl,
+      price: courses.price,
+      pppEnabled: courses.pppEnabled,
+      createdAt: courses.createdAt,
+      updatedAt: courses.updatedAt,
+      instructorName: users.name,
+      instructorAvatarUrl: users.avatarUrl,
+      instructorBio: users.bio,
+      categoryName: categories.name,
+    })
+    .from(courses)
+    .innerJoin(users, eq(courses.instructorId, users.id))
+    .innerJoin(categories, eq(courses.categoryId, categories.id))
+    .where(eq(courses.id, id))
+    .get();
+}
+
+export function getCourseWithDetails(id: number) {
+  const course = getCourseRow(id);
+  if (!course) return null;
+
+  const courseModules = db
+    .select()
+    .from(modules)
+    .where(eq(modules.courseId, id))
+    .orderBy(modules.position)
+    .all();
+
+  const moduleIds = courseModules.map((m) => m.id);
+
+  const courseLessons =
+    moduleIds.length > 0
+      ? db
+          .select()
+          .from(lessons)
+          .where(or(...moduleIds.map((mid) => eq(lessons.moduleId, mid))))
+          .orderBy(lessons.position)
+          .all()
+      : [];
+
+  return {
+    ...course,
+    modules: courseModules.map((mod) => ({
+      ...mod,
+      lessons: courseLessons.filter((l) => l.moduleId === mod.id),
+    })),
+  };
+}
+
+export function getLessonById(id: number) {
+  return db.select().from(lessons).where(eq(lessons.id, id)).get();
+}
+
+export function getModuleById(id: number) {
+  return db.select().from(modules).where(eq(modules.id, id)).get();
+}
+
+export function getUserById(id: number) {
+  return db.select().from(users).where(eq(users.id, id)).get();
+}
+
+export function getLessonProgress(userId: number, lessonId: number) {
+  return db
+    .select()
+    .from(lessonProgress)
+    .where(
+      and(
+        eq(lessonProgress.userId, userId),
+        eq(lessonProgress.lessonId, lessonId)
+      )
+    )
+    .get();
+}
+
+export function getLessonProgressForCourse(userId: number, courseId: number) {
+  const courseModules = db
+    .select({ id: modules.id })
+    .from(modules)
+    .where(eq(modules.courseId, courseId))
+    .all();
+
+  if (courseModules.length === 0) return [];
+
+  const courseLessons = db
+    .select({ id: lessons.id })
+    .from(lessons)
+    .where(or(...courseModules.map((m) => eq(lessons.moduleId, m.id))))
+    .all();
+
+  if (courseLessons.length === 0) return [];
+
+  return db
+    .select()
+    .from(lessonProgress)
+    .where(
+      and(
+        eq(lessonProgress.userId, userId),
+        or(...courseLessons.map((l) => eq(lessonProgress.lessonId, l.id)))
+      )
+    )
+    .all();
+}
+
+export function markLessonComplete(userId: number, lessonId: number) {
+  const existing = getLessonProgress(userId, lessonId);
+
+  if (existing) {
+    return db
+      .update(lessonProgress)
+      .set({
+        status: LessonProgressStatus.Completed,
+        completedAt: new Date().toISOString(),
+      })
+      .where(eq(lessonProgress.id, existing.id))
+      .returning()
+      .get();
+  }
+
+  return db
+    .insert(lessonProgress)
+    .values({
+      userId,
+      lessonId,
+      status: LessonProgressStatus.Completed,
+      completedAt: new Date().toISOString(),
+    })
+    .returning()
+    .get();
+}
+
+export function markLessonInProgress(userId: number, lessonId: number) {
+  const existing = getLessonProgress(userId, lessonId);
+
+  if (existing) {
+    if (existing.status === LessonProgressStatus.Completed) {
+      return existing;
+    }
+    return db
+      .update(lessonProgress)
+      .set({ status: LessonProgressStatus.InProgress })
+      .where(eq(lessonProgress.id, existing.id))
+      .returning()
+      .get();
+  }
+
+  return db
+    .insert(lessonProgress)
+    .values({
+      userId,
+      lessonId,
+      status: LessonProgressStatus.InProgress,
+    })
+    .returning()
+    .get();
+}
+
+export function getLastWatchPosition(userId: number, lessonId: number) {
+  const lastEvent = db
+    .select()
+    .from(videoWatchEvents)
+    .where(
+      and(
+        eq(videoWatchEvents.userId, userId),
+        eq(videoWatchEvents.lessonId, lessonId)
+      )
+    )
+    .orderBy(desc(videoWatchEvents.createdAt))
+    .limit(1)
+    .get();
+
+  return lastEvent?.positionSeconds ?? 0;
+}
+
+export function calculateWatchProgress(
+  userId: number,
+  lessonId: number,
+  videoDurationSeconds: number
+) {
+  if (videoDurationSeconds <= 0) return 0;
+
+  const result = db
+    .select({ maxPos: sql<number>`max(${videoWatchEvents.positionSeconds})` })
+    .from(videoWatchEvents)
+    .where(
+      and(
+        eq(videoWatchEvents.userId, userId),
+        eq(videoWatchEvents.lessonId, lessonId)
+      )
+    )
+    .get();
+
+  const maxPosition = result?.maxPos ?? 0;
+
+  return Math.min(Math.round((maxPosition / videoDurationSeconds) * 100), 100);
+}
+
+export function getCourseForLesson(lessonId: number) {
+  return db
+    .select({
+      courseId: courses.id,
+      courseTitle: courses.title,
+      courseSlug: courses.slug,
+      instructorId: courses.instructorId,
+    })
+    .from(lessons)
+    .innerJoin(modules, eq(lessons.moduleId, modules.id))
+    .innerJoin(courses, eq(modules.courseId, courses.id))
+    .where(eq(lessons.id, lessonId))
+    .get();
+}
+
+export function getCommentById(commentId: number) {
+  return db.select().from(comments).where(eq(comments.id, commentId)).get();
+}
+
+function getThreadRows(lessonId: number) {
+  return db
+    .select({
+      id: comments.id,
+      body: comments.body,
+      parentId: comments.parentId,
+      createdAt: comments.createdAt,
+      editedAt: comments.editedAt,
+      deletedAt: comments.deletedAt,
+      authorId: users.id,
+      authorName: users.name,
+      authorAvatarUrl: users.avatarUrl,
+      authorRole: users.role,
+    })
+    .from(comments)
+    .innerJoin(users, eq(comments.userId, users.id))
+    .where(eq(comments.lessonId, lessonId))
+    .orderBy(asc(comments.createdAt), asc(comments.id))
+    .all();
+}
+
+type ThreadRow = ReturnType<typeof getThreadRows>[number];
+
+function toThreadComment(row: ThreadRow, instructorId: number): ThreadComment {
+  const deleted = row.deletedAt !== null;
+  return {
+    id: row.id,
+    body: deleted ? markdown("") : row.body,
+    createdAt: row.createdAt,
+    editedAt: deleted ? null : row.editedAt,
+    deleted,
+    author: {
+      id: row.authorId,
+      name: row.authorName,
+      avatarUrl: row.authorAvatarUrl,
+      isInstructor: row.authorId === instructorId,
+      isPlatformAdmin: row.authorRole === UserRole.Admin,
+    },
+    replies: [],
+  };
+}
+
+export function getLessonThread(lessonId: number): ThreadComment[] {
+  const course = getCourseForLesson(lessonId);
+  if (!course) return [];
+
+  const rows = getThreadRows(lessonId);
+  const topLevel: ThreadComment[] = [];
+  const byId = new Map<number, ThreadComment>();
+
+  for (const row of rows) {
+    if (row.parentId !== null) continue;
+    const comment = toThreadComment(row, course.instructorId);
+    byId.set(comment.id, comment);
+    topLevel.push(comment);
+  }
+
+  for (const row of rows) {
+    if (row.parentId === null || row.deletedAt !== null) continue;
+    byId
+      .get(row.parentId)
+      ?.replies.push(toThreadComment(row, course.instructorId));
+  }
+
+  // A deleted question with no replies left has nothing worth showing.
+  return topLevel.filter((c) => !c.deleted || c.replies.length > 0);
+}
+
+export function getQuizByLessonId(lessonId: number) {
+  return db.select().from(quizzes).where(eq(quizzes.lessonId, lessonId)).get();
+}
+
+export function getQuizWithQuestions(quizId: number) {
+  const quiz = db.select().from(quizzes).where(eq(quizzes.id, quizId)).get();
+  if (!quiz) return null;
+
+  const questions = db
+    .select()
+    .from(quizQuestions)
+    .where(eq(quizQuestions.quizId, quizId))
+    .orderBy(quizQuestions.position)
+    .all();
+
+  const questionsWithOptions = questions.map((question) => {
+    const options = db
+      .select()
+      .from(quizOptions)
+      .where(eq(quizOptions.questionId, question.id))
+      .all();
+    return { ...question, options };
+  });
+
+  return { ...quiz, questions: questionsWithOptions };
+}
+
+export function getBestAttempt(userId: number, quizId: number) {
+  return db
+    .select()
+    .from(quizAttempts)
+    .where(
+      and(eq(quizAttempts.userId, userId), eq(quizAttempts.quizId, quizId))
+    )
+    .orderBy(desc(quizAttempts.score))
+    .limit(1)
+    .get();
+}
+
+export function calculateGrade(score: number): string {
+  if (score >= 0.9) return "A";
+  if (score >= 0.8) return "B";
+  if (score >= 0.7) return "C";
+  if (score >= 0.6) return "D";
+  return "F";
+}
+
+export type QuestionResult = {
+  questionId: number;
+  correct: boolean;
+  selectedOptionId: number | null;
+  correctOptionId: number | null;
+};
+
+type QuizQuestion = typeof quizQuestions.$inferSelect;
+
+function getCorrectOptionId(q: QuizQuestion): number | null {
+  if (q.questionType === "multiple_choice") {
+    const opts = db
+      .select()
+      .from(quizOptions)
+      .where(eq(quizOptions.questionId, q.id))
+      .all();
+    const correctOpt = opts.find((o) => o.isCorrect === true);
+    return correctOpt ? correctOpt.id : null;
+  }
+  if (q.questionType === "true_false") {
+    const correctOpt = db
+      .select()
+      .from(quizOptions)
+      .where(
+        and(eq(quizOptions.questionId, q.id), eq(quizOptions.isCorrect, true))
+      )
+      .get();
+    return correctOpt ? correctOpt.id : null;
+  }
+  return null;
+}
+
+function gradeQuestion(
+  q: QuizQuestion,
+  selected: number | undefined
+): QuestionResult {
+  if (!selected) {
+    return {
+      questionId: q.id,
+      correct: false,
+      selectedOptionId: null,
+      correctOptionId: null,
+    };
+  }
+  const correctOptionId = getCorrectOptionId(q);
+  return {
+    questionId: q.id,
+    correct: selected === correctOptionId,
+    selectedOptionId: selected,
+    correctOptionId,
+  };
+}
+
+function recordAttempt(
+  attempt: { userId: number; quizId: number; score: number; passed: boolean },
+  questionResults: QuestionResult[]
+) {
+  const saved = db.insert(quizAttempts).values(attempt).returning().get();
+
+  for (const result of questionResults) {
+    if (result.selectedOptionId === null) continue;
+    db.insert(quizAnswers)
+      .values({
+        attemptId: saved.id,
+        questionId: result.questionId,
+        selectedOptionId: result.selectedOptionId,
+      })
+      .run();
+  }
+  return saved;
+}
+
+export function computeResult(
+  userId: number,
+  quizId: number,
+  selectedAnswers: Record<number, number>
+) {
+  try {
+    const quiz = db.select().from(quizzes).where(eq(quizzes.id, quizId)).get();
+    if (!quiz) {
+      console.error("quiz not found");
+      return null;
+    }
+
+    const questions = db
+      .select()
+      .from(quizQuestions)
+      .where(eq(quizQuestions.quizId, quizId))
+      .orderBy(quizQuestions.position)
+      .all();
+
+    const questionResults = questions.map((q) =>
+      gradeQuestion(q, selectedAnswers[q.id])
+    );
+    const correct = questionResults.filter((r) => r.correct).length;
+    const total = questions.length;
+    const scoreValue = total > 0 ? correct / total : 0;
+    const passed = scoreValue > 0.7;
+    const grade = calculateGrade(scoreValue);
+
+    const attempt = recordAttempt(
+      { userId, quizId, score: scoreValue, passed },
+      questionResults
+    );
+
+    return {
+      attemptId: attempt.id,
+      score: scoreValue,
+      passed,
+      grade,
+      totalCorrect: correct,
+      totalQuestions: total,
+      questionResults,
+    };
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
+/**
+ * Renders every comment body to sanitised HTML, preserving the reply nesting.
+ * Comments are untrusted input, so this must be renderComment — never
+ * renderMarkdown, which lets raw HTML through for trusted lesson content.
+ */
+export async function renderThread(
+  nodes: ThreadComment[]
+): Promise<RenderedComment[]> {
+  return Promise.all(
+    nodes.map(async (node) => ({
+      ...node,
+      bodyHtml: node.deleted ? "" : await renderComment(node.body),
+      replies: await renderThread(node.replies),
+    }))
+  );
+}
+
+export type FlatLesson = {
+  id: number;
+  title: string;
+  moduleId: number;
+  moduleTitle: string;
+};
+
+export function flattenCourseLessons(course: {
+  modules: Array<{
+    id: number;
+    title: string;
+    lessons: Array<{ id: number; title: string; moduleId: number }>;
+  }>;
+}): FlatLesson[] {
+  const flat: FlatLesson[] = [];
+  for (const mod of course.modules) {
+    for (const lesson of mod.lessons) {
+      flat.push({
+        id: lesson.id,
+        title: lesson.title,
+        moduleId: mod.id,
+        moduleTitle: mod.title,
+      });
+    }
+  }
+  return flat;
+}
