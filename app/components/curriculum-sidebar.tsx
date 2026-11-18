@@ -19,7 +19,6 @@ type LessonLinkContext = {
 
 function useExpandedModules(initialModuleId: number | undefined) {
   const [expandedModules, setExpandedModules] = useState<Set<number>>(() => {
-    // Start with current module expanded
     const initial = new Set<number>();
     if (initialModuleId) initial.add(initialModuleId);
     return initial;
@@ -53,7 +52,6 @@ export function CurriculumSidebar({
   lessonProgressMap: Record<number, string>;
   enrolled: boolean;
 }) {
-  // Find which module the current lesson belongs to
   const currentModuleId = curriculum.find((m) =>
     m.lessons.some((l) => l.id === currentLessonId)
   )?.id;

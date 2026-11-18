@@ -23,7 +23,6 @@ export function FullLesson({ data }: { data: FullData }) {
 
   return (
     <div className="flex">
-      {/* Curriculum Sidebar */}
       <CurriculumSidebar
         course={course}
         curriculum={data.curriculum}
@@ -43,10 +42,8 @@ export function FullLesson({ data }: { data: FullData }) {
           <LessonHeader data={data} />
           <LessonBody data={data} />
 
-          {/* Quiz Section */}
           {enrolled && currentUserId && <LessonQuiz data={data} />}
 
-          {/* Mark Complete / Up Next */}
           {enrolled && currentUserId && <LessonCompletion data={data} />}
 
           {/* Questions & Discussion — confidential to people with access */}
@@ -74,7 +71,6 @@ function LessonHeader({ data }: { data: FullData }) {
 
   return (
     <>
-      {/* Lesson Title */}
       <div className="mb-2 flex items-start justify-between gap-3">
         <h1 className="text-3xl font-bold">{lesson.title}</h1>
         {data.currentUserId && <BookmarkToggle bookmarked={data.bookmarked} />}
@@ -109,7 +105,6 @@ function LessonBody({ data }: { data: FullData }) {
 
   return (
     <>
-      {/* YouTube Video */}
       {lesson.videoUrl && (
         <YouTubePlayer
           videoUrl={lesson.videoUrl}
@@ -127,7 +122,6 @@ function LessonBody({ data }: { data: FullData }) {
       {/* Note — under the video, so the Student can write while they watch */}
       {currentUserId && <LessonNote note={data.note} />}
 
-      {/* Lesson Content */}
       {contentHtml && (
         <div
           className="prose prose-neutral dark:prose-invert mb-8 max-w-none"
@@ -159,7 +153,6 @@ function LessonCompletion({ data }: { data: FullData }) {
   const isCompleted =
     data.lessonStatus === LessonProgressStatus.Completed || justCompleted;
 
-  // Navigate to next lesson after marking complete
   useEffect(() => {
     if (justCompleted && nextLesson) {
       navigate(`/courses/${course.slug}/lessons/${nextLesson.id}`);
