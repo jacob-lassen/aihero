@@ -24,6 +24,10 @@ describe("LessonNote", () => {
     expect(classes).toContain("overflow-y-auto");
   });
 
+  it("wraps a long unbroken word, so a pasted URL does not widen the card", () => {
+    expect(textareaClasses(render(null))).toContain("wrap-anywhere");
+  });
+
   it("puts the heading in a card header, so the card is not padded twice", () => {
     const html = render(null);
 

@@ -26,13 +26,14 @@ export function LessonNote({ note }: { note: LessonNoteData }) {
           <input type="hidden" name="intent" value="save-note" />
           {/* The Textarea sizes itself to its content, which ignores `rows`.
               The bounds keep an empty note writable and a long one from
-              pushing the lesson off the screen. */}
+              pushing the lesson off the screen; wrap-anywhere stops a long
+              unbroken word, such as a pasted URL, widening the card. */}
           <Textarea
             name="body"
             aria-label="Your notes"
             defaultValue={note?.body ?? ""}
             placeholder="Only you can read this."
-            className="max-h-80 min-h-32 resize-y overflow-y-auto"
+            className="max-h-80 min-h-32 resize-y overflow-y-auto wrap-anywhere"
           />
           <div className="flex items-center gap-3">
             <Button type="submit" size="sm" disabled={isSaving}>
