@@ -20,7 +20,10 @@ import {
 } from "lucide-react";
 import { CourseImage } from "~/components/course-image";
 import { DevUI } from "~/components/dev-ui";
-import { selectFeaturedCourses } from "~/modules/featured-courses";
+import {
+  FEATURED_GRID_COLUMNS,
+  selectFeaturedCourses,
+} from "~/modules/featured-courses";
 import { getCurrentUserId, getDevCountry } from "~/lib/session";
 import { getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
 import { eq, like, and, or, sql } from "drizzle-orm";
@@ -301,7 +304,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </Link>
             </Button>
           </div>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div
+            className={`grid grid-cols-1 gap-6 sm:grid-cols-2 ${FEATURED_GRID_COLUMNS}`}
+          >
             {featuredCourses.map((course) => (
               <Link
                 key={course.id}
