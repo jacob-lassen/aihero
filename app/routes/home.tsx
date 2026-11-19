@@ -20,9 +20,13 @@ import {
 } from "lucide-react";
 import { CourseImage } from "~/components/course-image";
 import { DevUI } from "~/components/dev-ui";
+import {
+  FEATURED_GRID_COLUMNS,
+  selectFeaturedCourses,
+} from "~/modules/featured-courses";
 import { getCurrentUserId, getDevCountry } from "~/lib/session";
 import { getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
-import { eq, like, and, or, sql } from "drizzle-orm";
+import { eq, inArray, like, and, or, sql } from "drizzle-orm";
 import { db } from "~/db";
 import { courses, categories, users, modules, lessons } from "~/db/schema";
 
@@ -99,22 +103,18 @@ function buildCourseQuery(
   return sorted.limit(limit).offset(offset).all();
 }
 
-function getLessonCountForCourse(courseId: number) {
-  const courseModules = db
-    .select({ id: modules.id })
-    .from(modules)
-    .where(eq(modules.courseId, courseId))
+function getLessonCountsForCourses(courseIds: number[]) {
+  if (courseIds.length === 0) return new Map<number, number>();
+
+  const rows = db
+    .select({ courseId: modules.courseId, count: sql<number>`count(*)` })
+    .from(lessons)
+    .innerJoin(modules, eq(lessons.moduleId, modules.id))
+    .where(inArray(modules.courseId, courseIds))
+    .groupBy(modules.courseId)
     .all();
 
-  if (courseModules.length === 0) return 0;
-
-  const count = db
-    .select({ count: sql<number>`count(*)` })
-    .from(lessons)
-    .where(or(...courseModules.map((m) => eq(lessons.moduleId, m.id))))
-    .get();
-
-  return count?.count ?? 0;
+  return new Map(rows.map((row) => [row.courseId, row.count]));
 }
 
 export function meta() {
@@ -137,9 +137,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     50,
     0
   );
-  const featured = courses.slice(0, 3).map((course) => ({
+  const featuredCourses = selectFeaturedCourses(courses);
+  const lessonCounts = getLessonCountsForCourses(
+    featuredCourses.map((course) => course.id)
+  );
+  const featured = featuredCourses.map((course) => ({
     ...course,
-    lessonCount: getLessonCountForCourse(course.id),
+    lessonCount: lessonCounts.get(course.id) ?? 0,
   }));
   const categories = getAllCategories();
   const users = getAllUsers();
@@ -300,7 +304,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </Link>
             </Button>
           </div>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            className={`grid grid-cols-1 gap-6 sm:grid-cols-2 ${FEATURED_GRID_COLUMNS}`}
+          >
             {featuredCourses.map((course) => (
               <Link
                 key={course.id}
