@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { CourseImage } from "~/components/course-image";
 import { DevUI } from "~/components/dev-ui";
+import { selectFeaturedCourses } from "~/modules/featured-courses";
 import { getCurrentUserId, getDevCountry } from "~/lib/session";
 import { getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
 import { eq, like, and, or, sql } from "drizzle-orm";
@@ -137,7 +138,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     50,
     0
   );
-  const featured = courses.slice(0, 3).map((course) => ({
+  const featured = selectFeaturedCourses(courses).map((course) => ({
     ...course,
     lessonCount: getLessonCountForCourse(course.id),
   }));
@@ -300,7 +301,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </Link>
             </Button>
           </div>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {featuredCourses.map((course) => (
               <Link
                 key={course.id}
