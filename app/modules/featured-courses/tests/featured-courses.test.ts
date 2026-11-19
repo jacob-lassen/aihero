@@ -1,11 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { FEATURED_COURSE_COUNT, selectFeaturedCourses } from "../index";
+import { selectFeaturedCourses } from "../index";
 
 describe("selectFeaturedCourses", () => {
-  it("features four courses", () => {
-    expect(FEATURED_COURSE_COUNT).toBe(4);
-  });
-
   it("takes the first four courses, in order", () => {
     expect(selectFeaturedCourses([1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4]);
   });
