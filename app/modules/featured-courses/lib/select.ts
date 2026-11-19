@@ -1,5 +1,6 @@
-// Four fills one row on desktop and a 2×2 grid on tablets, so no card sits
-// alone on a row (issue #19: three cards were too big).
+// Four fills one row on desktop and a 2×2 grid on tablets, so once four
+// courses are published no card sits alone on a row (issue #19: three cards
+// were too big).
 const FEATURED_COURSE_COUNT = 4;
 
 // Tailwind finds classes by scanning source text, so this must stay a literal
